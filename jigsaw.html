@@ -1,0 +1,354 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>jigsaw</title>
+<style>
+body{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+}
+.jigsawClass{ width:700px; height:500px; padding:10px; border:1px solid #000;position:relative; top:0; left:0; float:left;}
+.jigsawClass canvas{ float:left; border:1px solid #666;}
+.jigsawClass section{ float:left; width:18%; max-width:150px; height:100%; margin-left:1%;}
+.jigsawClass section div{width:50px; height:20px; position:relative; top:0;z-index:1; display:inline-block; background:#CCC; border:1px solid #666; border-radius:10px; text-align:center;}
+.jigsawClass section div input{opacity:0; position:absolute; top:0; left:0; z-index:90; width:100%; overflow:hidden; display:inline-block;}
+.jigsawClass section select{border-radius:10px;}
+.jigsawClass section label{ display:inline-block; margin:20px 0px;}
+.similarBtn p{display:inline;}
+.jigsawClass div{position:absolute; top:10%; left:10%; z-index:99; background:#CCC; border:2px dashed #F00; display:none; text-align:center;}
+.jigsawClass div button{position:absolute; top:0; right:0; height:30px; width:30px; background-color:#F00; color:#FFF; font-size:20px; z-index:100; text-align:center; margin:0px; padding:0px; line-height:20px;border:none;}
+.jigsawClass div img{margin:10px;}
+.jigsawClass div h1{background:rgba(105,160,127,0.5); position:absolute; top:50%; left:50%; line-height:100px;width:100px; height:100px;border:rgb(105,160,127) 5px solid; border-radius:100%; margin-left:-50px; margin-top:-50px; font-size:3.5em; color:#FFF;}
+</style>
+</head>
+
+<body>
+ <div id="jigsaw" class="jigsawClass"></div>
+<script>
+//jigsaw
+(function(){
+	function Jigsaw(id,optionArr){
+		if(typeof id !== 'string'){
+			console.log('please input id as a string');
+			return ;
+		}else if(document.getElementById(id)==null){
+			console.log('could not find the id.');
+			return ;
+		}
+		
+		var element = document.getElementById(id);
+		try{
+			var canvasTest = document.createElement("canvas");
+			var contextTest = canvasTest.getContext("2d");
+		}catch(e){
+			element.innerHTML='you browser is not supported canvas';
+			return ;
+		}
+		
+		if(!isUseJigsawClass(id,'jigsawClass')){
+			console.log('the element of the id has not the '+classname+' class');
+			return ;
+		}
+				
+		function isUseJigsawClass(id,classname){
+			if(element.className === classname){
+				return true;
+			}
+			return false;
+		}
+		
+		function init(id,optionArr){
+			var optionStr='';
+			if(optionArr.length != 0){
+				for(var i=0;i<optionArr.length;i++){
+					optionStr+='<option>'+optionArr[i]+'</option>';
+				}
+			}
+			var html = '<canvas id="'+id+'Canvas">Your browse doesn'+'&rsquo;'+'t support this game.</canvas>'+
+							  '<section>'+
+								  '<label>图像:</label><div class="similarBtn"><p>浏览</p><input id="'+id+'Image" type="file" accept="image/*" /></div>'+
+								  '<label>难易度:</label><select id="'+id+'Sence">'+optionStr+'</select>'+
+								  '<label>游戏:</label><div class="similarBtn"><p>开始</p><input id="'+id+'Play" type="button" value="startPlay"/></div><br />'+
+								  '<label>图片:</label><div class="similarBtn"><p>显示</p><input id="'+id+'Showbtn" type="button"/></div>'+
+							  '</section>'+
+							  '<div id="'+id+'Show"><button id="'+id+'closeImg" value="x">x</button><img id="'+id+'ShowImg"/><h1>10</h1></div>';
+					element.innerHTML = html;
+		}
+		
+		init(id,optionArr);
+		
+		var canvas =  document.getElementById(id+"Canvas"),
+			  context = canvas.getContext("2d"),
+		      canvasHeight = parseInt(window.getComputedStyle(element,null).height || element.currentStyle.height || 500)-10,
+			  canvasWidth= parseInt(window.getComputedStyle(element,null).width || element.currentStyle.width || 700)*0.8,
+			  section = document.getElementById(id+"Image"),
+			  selectSence = document.getElementById(id+"Sence"),
+			  isPlay = document.getElementById(id+"Play"),
+			  isShowImg = document.getElementById(id+"Showbtn");
+			  isCloseImg = document.getElementById(id+"closeImg");
+		canvas.width = canvasWidth;
+		canvas.height = canvasHeight;
+		
+		var frame = {
+			file:{imgData:null,imgWidth:0,imgHeight:0},
+			setParam:{rank:5,isPlay:null,showTimeCounter:10},
+			imgOperate:{imgArr:[],imgSelectArr:[],paddingX:10,paddingY:10,imgOrigWidth:0,imgOrigHeight:0,imgCanvasWidth:0,imgCanvasHeight:0},
+			size:{width:0,height:0},
+			ratio:{wR:1,hR:1},
+			addEvent:addEvent
+		}
+		
+		var optionArrange,showImgTime;
+
+		function addHandler(obj,eve,handler){
+			if(obj.addEventListener){
+				obj.addEventListener(eve,handler,false);
+			}else if(obj.attachEvent){
+				obj.attachEvent('on'+eve,handler);
+			}else{
+				obj['on'+eve] = handler;
+			}
+		}
+		
+		function addEvent(){
+			addHandler(section,'change',function(){getValue(this,'file');});
+			addHandler(selectSence,'change',function(){getValue(this,'option');});
+			addHandler(isPlay,'click',function(){getValue(this,'bool');});
+			addHandler(isShowImg,'click',function(){ShowImg();});
+			addHandler(canvas,'click',function(e){changeImg(e)});
+			addHandler(isCloseImg,'click',function(){clearTimeout(showImgTime);this.parentNode.style.display='none';});
+		}
+		
+		function getValue(obj,type){
+			var value;
+			switch(type){
+				case 'file':
+				    value =  obj.files[0];
+					if(value.type == null){
+						return ;
+					}
+					if(window.FileReader && value.type.indexOf("image") != -1){
+						var fr = new FileReader(),urlData='';
+						fr.readAsDataURL(value);
+						fr.onprogress = function(e){
+							//console.log(e.loaded);
+						}
+						fr.onload = function(){
+							 urlData =  this.result;
+							 setValue(obj,'file',urlData);
+						}
+					}else{
+						if(value.type.indexOf("image") == -1){
+							alert("the file type is error! please select a image.");
+						}
+					}
+					break;
+				case 'option':
+				    value =  obj.value;
+					setValue(obj,'option',value);
+					break;
+				case 'bool':
+				    value =  obj.value;
+					setValue(obj,'bool',value);
+					break;
+				default:
+				    console.log('the data type is error!');
+					break;
+			}
+		}
+				
+		function setValue(obj,type,value){
+			switch(type){
+				case 'file':
+					var img = new Image(),imgtype;
+					img.onload = function(){
+						frame.file.imgData = this;
+						frame.file.imgWidth = this.width;
+						frame.file.imgHeight = this.height;
+						frame.ratio.wR = frame.file.imgWidth/canvas.width;
+						frame.ratio.hR = frame.file.imgHeight/canvas.height;
+						
+						setImageRank(canvas.width,canvas.height,frame.setParam.rank);
+						
+						context.clearRect(0,0,canvas.width,canvas.height);
+						context.drawImage(this,0,0,canvas.width,canvas.height);
+						if(isPlay.value == 'isPlayed'){
+							if(frame.setParam.isPlay !=null){
+								clearInterval(frame.setParam.isPlay);
+							}
+							isPlay.value = 'startPlay';
+							isPlay.parentNode.getElementsByTagName('p')[0].innerHTML = '开始';
+						}
+					}
+					img.src = value;// 记住必须先绑定事件，才能设置src属性，否则会出同步问题
+					break;
+				case 'option':
+				    optionArrange = parseInt(value);
+					break;
+				case 'bool':
+				    if(frame.file.imgData !== null){
+						if(obj.value == 'startPlay'){
+							obj.value = 'isPlayed';
+							obj.parentNode.getElementsByTagName('p')[0].innerHTML = '重新';
+						}
+						frame.setParam.rank = optionArrange || 5;
+						setImageRank(canvas.width,canvas.height,frame.setParam.rank);
+						randomImgArrange();
+						context.drawImage(frame.file.imgData,0,0,canvas.width,canvas.height);
+						context.clearRect(frame.imgOperate.paddingX,frame.imgOperate.paddingY,frame.size.width+1,frame.size.height+1);
+						if(frame.setParam.isPlay !=null){
+							clearInterval(frame.setParam.isPlay);
+						}
+						frame.setParam.isPlay = setInterval(drawCanvas,33);
+					}
+					break;
+				default:
+					break;
+			}
+		}
+		
+		function randomImgArrange(){
+			var initArr = new Array();
+			for(var i=0;i<frame.setParam.rank;i++){
+				initArr[i] = [];
+				for(var j=0;j<frame.setParam.rank;j++){
+					initArr[i][j]={col:i,row:j,selected:false}
+				}
+			}
+			
+			var randomArr = new Array();
+			for(var i=0;i<frame.setParam.rank;i++){
+				randomArr[i] = [];
+				for(var j=0;j<frame.setParam.rank;j++){
+					var randomCol = 0;
+					var randomRow = 0;
+					var isFound = false;
+					while(!isFound){
+						randomCol = Math.floor(Math.random()*frame.setParam.rank);
+						randomRow = Math.floor(Math.random()*frame.setParam.rank);
+						if(initArr[randomCol][randomRow] !=false){
+							isFound = true;
+						}
+					}
+					randomArr[i][j]=initArr[randomCol][randomRow];
+					initArr[randomCol][randomRow] = false;
+				}
+			}
+			
+			initArr = null;
+			frame.imgOperate.imgArr = randomArr;
+			randomArr=null;
+		}
+		
+		function changeImg(e){
+			if(frame.imgOperate.imgArr.length != 0){
+				var mouseX = e.pageX - canvas.offsetLeft-frame.imgOperate.paddingX,
+				      mouseY = e.pageY - canvas.offsetTop-frame.imgOperate.paddingY;
+				for(var i=0;i<frame.setParam.rank;i++){
+					for(var j=0;j<frame.setParam.rank;j++){
+						var img = frame.imgOperate.imgArr[i][j]
+						      imgLeft = j * frame.imgOperate.imgCanvasWidth+1+frame.imgOperate.paddingX,
+							  imgTop = i * frame.imgOperate.imgCanvasHeight+1+frame.imgOperate.paddingY,
+							  imgRight = imgLeft + frame.imgOperate.imgCanvasWidth,
+							  imgBottom = imgTop+frame.imgOperate.imgCanvasHeight;
+						if(mouseX>=imgLeft && mouseX<=imgRight && mouseY>=imgTop && mouseY<=imgBottom){
+							if(frame.imgOperate.imgArr[i][j].selected){
+								frame.imgOperate.imgArr[i][j].selected = false;
+								frame.imgOperate.imgSelectArr.length = 0;
+							}else{
+								frame.imgOperate.imgArr[i][j].selected = true;
+							    frame.imgOperate.imgSelectArr.push({col:i,row:j});
+							}
+						}
+					}
+				}
+				
+				if(frame.imgOperate.imgSelectArr.length == 2){
+					var selectedImg = frame.imgOperate.imgArr[frame.imgOperate.imgSelectArr[0].col][frame.imgOperate.imgSelectArr[0].row];
+					frame.imgOperate.imgArr[frame.imgOperate.imgSelectArr[0].col][frame.imgOperate.imgSelectArr[0].row] = frame.imgOperate.imgArr[frame.imgOperate.imgSelectArr[1].col][frame.imgOperate.imgSelectArr[1].row];
+					frame.imgOperate.imgArr[frame.imgOperate.imgSelectArr[1].col][frame.imgOperate.imgSelectArr[1].row] = selectedImg;
+					frame.imgOperate.imgArr[frame.imgOperate.imgSelectArr[0].col][frame.imgOperate.imgSelectArr[0].row].selected = false;
+					frame.imgOperate.imgArr[frame.imgOperate.imgSelectArr[1].col][frame.imgOperate.imgSelectArr[1].row].selected = false;
+					frame.imgOperate.imgSelectArr.length = 0;
+				}
+			}
+		}
+		
+		function calculateImgSize(frameWidth,frameHeight,ranks){
+			var imgOneWidth = Math.floor((frameWidth-20)/ranks),
+			      imgOneHeight = Math.floor((frameHeight-20)/ranks),
+			      imgAllWidth = imgOneWidth * frame.setParam.rank,
+			      imgAllHeight = imgOneHeight * frame.setParam.rank,
+			      widthPadding = Math.floor((frameWidth - imgAllWidth)/2),
+			      heightPadding = Math.floor((frameHeight - imgAllHeight)/2);
+			return {imageWidth:imgAllWidth,imageHeight:imgAllHeight,singleWidth:imgOneWidth,singleHeight:imgOneHeight,widthPadding:widthPadding,heightPadding:heightPadding};
+		}
+		
+		function setImageRank(frameWidth,frameHeight,ranks){
+			var imgObj = calculateImgSize(frameWidth,frameHeight,ranks);
+			frame.imgOperate.imgCanvasHeight = imgObj.singleHeight;
+			frame.imgOperate.imgCanvasWidth =  imgObj.singleWidth;
+			frame.imgOperate.imgOrigHeight = Math.floor(frame.imgOperate.imgCanvasHeight *frame.ratio.hR);
+			frame.imgOperate.imgOrigWidth = Math.floor(frame.imgOperate.imgCanvasWidth *frame.ratio.wR);
+			frame.imgOperate.paddingX = imgObj.widthPadding;
+			frame.imgOperate.paddingY = imgObj.heightPadding;
+			frame.size.width = imgObj.imageWidth;
+			frame.size.height = imgObj.imageHeight;
+		}
+
+		function drawCanvas(){
+			for(var i=0;i<frame.setParam.rank;i++){
+				for(var j=0; j<frame.setParam.rank;j++){
+					var image = frame.imgOperate.imgArr[i][j];
+					var frameWidth = frame.imgOperate.imgOrigWidth,
+						  frameHeight = frame.imgOperate.imgOrigHeight,
+						  frameX = Math.floor(image.col * frameWidth+frame.imgOperate.paddingX*frame.ratio.wR),
+					      frameY =Math.floor(image.row * frameHeight+frame.imgOperate.paddingY*frame.ratio.hR),
+						  imgWidth = frame.imgOperate.imgCanvasWidth-1,
+						  imgHeight = frame.imgOperate.imgCanvasHeight-1,
+						  imgX = j * frame.imgOperate.imgCanvasWidth+frame.imgOperate.paddingX+1,
+						  imgY = i * frame.imgOperate.imgCanvasHeight+frame.imgOperate.paddingY+1;
+					context.drawImage(frame.file.imgData,frameX,frameY,frameWidth,frameHeight,imgX,imgY,imgWidth,imgHeight);
+					
+					if(image.selected){
+						context.lineWidth=2;
+						context.strokeStyle = "#f00";
+						context.strokeRect(imgX+1,imgY+1,imgWidth-2,imgHeight-2);
+					}
+				}
+			}
+		}
+		
+		function ShowImg(){
+			if(frame.file.imgData !==null){
+				var imgSection = document.getElementById(id+'Show');
+				var image = document.getElementById(id+'ShowImg');
+				imgSection.style.display = 'block';
+				image.src = frame.file.imgData.src;
+				image.height = frame.size.height;
+				image.width = frame.size.width;
+				
+				var h3 = imgSection.getElementsByTagName("h1")[0];
+				h3.innerHTML = frame.setParam.showTimeCounter;
+				if(frame.setParam.showTimeCounter>0){
+					frame.setParam.showTimeCounter--;
+					showImgTime = setTimeout(ShowImg,1000);
+				}else{
+					imgSection.style.display = 'none';
+					frame.setParam.showTimeCounter = 10;
+				}
+			}
+		}
+		
+		element['jigsaw']=frame.addEvent();
+		return element;
+	}
+	
+	var test1 = new Jigsaw("jigsaw",[1,2,5,8,10]);
+})()
+</script>
+</body>
+</html>
